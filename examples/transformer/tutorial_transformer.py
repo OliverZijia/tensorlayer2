@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+from examples.transformer.models.Transformer import Transformer
 from examples.transformer.utils import wmt_dataset
 
 
