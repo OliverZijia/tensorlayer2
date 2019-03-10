@@ -1,6 +1,8 @@
 import tensorlayer as tl
 import tensorflow as tf
 from examples.transformer.models import embedding_layer
+from examples.transformer.models.attention_layer import SelfAttentionLayer
+from examples.transformer.models.feedforward_layer import FeedForwardLayer
 
 
 class Transformer(tl.layers.Layer):
@@ -39,6 +41,7 @@ class Transformer(tl.layers.Layer):
         self.embedding_layer = embedding_layer.EmbeddingLayer(
             self.params.vocab_size, self.params.hidden_size)
         self.encoder_stack = EncoderStack(self.params)
+        self.decoder_stack = DecoderStack(self.params)
 
     def forward(self, inputs, targets):
         inputs = self.embedding_layer(inputs)
@@ -58,7 +61,7 @@ class LayerNormalization(tl.layers.Layer):
     Parameters
     ----------
     hidden_size:
-        hidden_size of features
+        hidden size of features
     epsilon:
         value to prevent division by zero
 
@@ -122,8 +125,12 @@ class EncoderStack(tl.layers.Layer):
         self.sublayers = []
         for _ in range(self.params.encoder_num_layers):
             self.sublayers.append([
-                SublayerWrapper(SelfAttentionLayer(self.params)),
-                SublayerWrapper(FeedForwardLayer(self.params))])
+                SublayerWrapper(
+                    SelfAttentionLayer(self.params.num_heads,
+                                       self.params.hidden_size, self.params.keep_prob)),
+                SublayerWrapper(
+                    FeedForwardLayer(self.params.hidden_size,
+                                     self.params.ff_size, self.params.keep_prob))])
         self.layer_norm = LayerNormalization(self.params.hidden_size)
 
     def forward(self, inputs):

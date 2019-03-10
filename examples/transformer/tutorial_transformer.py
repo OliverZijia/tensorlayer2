@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from examples.transformer.models.Transformer import Transformer
+from examples.transformer.models.transformer import Transformer
 from examples.transformer.utils import wmt_dataset
 
 
@@ -46,7 +46,7 @@ def train_model():
 
     inputs = tf.placeholder(shape=(None, None), dtype=tf.int64, name='inputs')
     targets = tf.placeholder(shape=(None, None), dtype=tf.int64, name='targets')
-    logits = model(inputs, targets)
+    logits = model(inputs=inputs, targets=targets)
     loss = tf.losses.sparse_softmax_cross_entropy(targets, logits)
     pred = tf.argmax(logits, axis=2)
 
