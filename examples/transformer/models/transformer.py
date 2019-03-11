@@ -3,6 +3,7 @@ import tensorflow as tf
 from examples.transformer.models import embedding_layer
 from examples.transformer.models.attention_layer import SelfAttentionLayer, MultiHeadAttentionLayer
 from examples.transformer.models.feedforward_layer import FeedForwardLayer
+from examples.transformer.models.model_utils import get_input_mask, get_target_mask, positional_encoding
 
 
 class Transformer(tl.layers.Layer):
@@ -42,20 +43,28 @@ class Transformer(tl.layers.Layer):
             self.params.vocab_size, self.params.hidden_size)
         self.encoder_stack = EncoderStack(self.params)
         self.decoder_stack = DecoderStack(self.params)
+        self.dropout = tl.layers.Dropout(self.params.keep_prob)
 
     def forward(self, inputs, targets):
+        length = tf.shape(inputs)[1]
         input_mask = get_input_mask(inputs)
-        target_mask = get_target_mask(targets)
+        target_mask = get_target_mask(length)
 
         inputs = self.embedding_layer(inputs)
         targets = self.embedding_layer(targets)
         # shift targets to right
         targets = tf.pad(targets, [[0, 0], [1, 0], [0, 0]])[:, :-1, :]
-        inputs += positional_encoding()
-        targets += positional_encoding()
+        inputs += positional_encoding(length, self.params.hidden_size)
+        targets += positional_encoding(length, self.params.hidden_size)
 
-        features = self.encoder_stack(inputs, input_mask)
-        outputs = self.decoder_stack(features, targets, input_mask, target_mask)
+        inputs = self.dropout(inputs)
+        targets = self.dropout(targets)
+
+        features = self.encoder_stack(inputs, input_mask=input_mask)
+        outputs = self.decoder_stack(features, decoder_inputs=targets, input_mask=input_mask, target_mask=target_mask)
+
+        # TODO
+        # return logits
         return outputs
 
 
