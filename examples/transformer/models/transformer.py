@@ -1,7 +1,7 @@
 import tensorlayer as tl
 import tensorflow as tf
 from examples.transformer.models import embedding_layer
-from examples.transformer.models.attention_layer import SelfAttentionLayer
+from examples.transformer.models.attention_layer import SelfAttentionLayer, MultiHeadAttentionLayer
 from examples.transformer.models.feedforward_layer import FeedForwardLayer
 
 
@@ -44,13 +44,18 @@ class Transformer(tl.layers.Layer):
         self.decoder_stack = DecoderStack(self.params)
 
     def forward(self, inputs, targets):
+        input_mask = get_input_mask(inputs)
+        target_mask = get_target_mask(targets)
+
         inputs = self.embedding_layer(inputs)
         targets = self.embedding_layer(targets)
+        # shift targets to right
+        targets = tf.pad(targets, [[0, 0], [1, 0], [0, 0]])[:, :-1, :]
         inputs += positional_encoding()
         targets += positional_encoding()
 
-        features = self.encoder_stack(inputs)
-        outputs = self.decoder_stack(features, targets)
+        features = self.encoder_stack(inputs, input_mask)
+        outputs = self.decoder_stack(features, targets, input_mask, target_mask)
         return outputs
 
 
@@ -106,6 +111,7 @@ class SublayerWrapper(object):
 class EncoderStack(tl.layers.Layer):
     """
     Encoder stack
+    Encoder is made up of self-attn and feed forward
 
     Parameters
     ----------
@@ -133,7 +139,7 @@ class EncoderStack(tl.layers.Layer):
                                      self.params.ff_size, self.params.keep_prob))])
         self.layer_norm = LayerNormalization(self.params.hidden_size)
 
-    def forward(self, inputs):
+    def forward(self, inputs, input_mask):
         """
         Parameters
         ----------
@@ -145,7 +151,50 @@ class EncoderStack(tl.layers.Layer):
             encoded features, shape=(batch_size, length, hidden_size)
         """
         for sublayer in self.sublayers:
-            inputs = sublayer[0](inputs, inputs)
+            inputs = sublayer[0](inputs, input_mask)
             inputs = sublayer[1](inputs)
         inputs = self.layer_norm(inputs)
         return inputs
+
+
+class DecoderStack(tl.layers.Layer):
+    """
+    Decoder stack
+    Decoder is made of self-attn, src-attn, and feed forward
+
+    Parameters
+    ----------
+    params: a parameter object
+        refer to ../transformer/utils/model_params for details
+
+    """
+
+    def __init__(self, params):
+        super(DecoderStack, self).__init__()
+        self.params = params
+
+    def build(self, inputs_shape):
+        self.sublayers = []
+        for _ in range(self.params.decoder_num_layers):
+            self.sublayers.append([
+                SublayerWrapper(
+                    SelfAttentionLayer(self.params.num_heads,
+                                       self.params.hidden_size, self.params.keep_prob)),
+                SublayerWrapper(
+                    MultiHeadAttentionLayer(self.params.num_heads,
+                                            self.params.hidden_size, self.params.keep_prob)),
+                SublayerWrapper(
+                    FeedForwardLayer(self.params.hidden_size,
+                                     self.params.ff_size, self.params.keep_prob))])
+        self.layer_norm = LayerNormalization(self.params.hidden_size)
+
+    def forward(self, decoder_inputs, features, input_mask, target_mask):
+        for sublayer in self.sublayers:
+            outputs = sublayer[0](decoder_inputs, target_mask)
+            outputs = sublayer[1](outputs, features, input_mask)
+            outputs = sublayer[2](outputs)
+        outputs = self.layer_norm(outputs)
+        return outputs
+
+    def __repr__(self):
+        pass

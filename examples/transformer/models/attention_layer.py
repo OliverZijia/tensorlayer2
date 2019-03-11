@@ -27,7 +27,7 @@ class MultiHeadAttentionLayer(tl.layers.Layer):
         self.Wv = self._get_weights("W_v", shape=(self.hidden_size, self.hidden_size))
         self.Wout = self._get_weights("Wout", shape=(self.hidden_size, self.hidden_size))
 
-    def forward(self, x, y):
+    def forward(self, x, y, mask):
         """
         Parameters
         ----------
@@ -35,31 +35,36 @@ class MultiHeadAttentionLayer(tl.layers.Layer):
             input to generate query & key, shape=(batch_size, length, hidden_size)
         y:
             input to generate value, shape=(batch_size, length, hidden_size)
+        mask:
+            mask to fill certain positions with 1e-9 (negative infinity)
+            can occur when: (1) it is a padding
+                            (2) decoding in Transformer
 
         Return
         -------
             shape=(batch_size, length, hidden_size)
         """
-        q = tf.matmul(x, self.Wq)
-        k = tf.matmul(x, self.Wk)
-        v = tf.matmul(y, self.Wv)
+        q = tf.matmul(x, self.Wq)  # (batch_size, length, hidden_size)
+        k = tf.matmul(y, self.Wk)  # (batch_size, length, hidden_size)
+        v = tf.matmul(y, self.Wv)  # (batch_size, length, hidden_size)
 
         # split heads
         batch_size, length, hidden_size = tf.shape(x)
         q, k, v = map(
             lambda _: tf.transpose(tf.reshape(_, (batch_size, length, self.num_heads, self.dk)), perm=(0, 2, 1, 3)),
-            [q, k, v])
+            [q, k, v])  # (batch_size, num_heads, length, dk)
 
         q *= tf.rsqrt(self.dk)
 
-        logits = tf.matmul(q, k, transpose_b=True)
+        logits = tf.matmul(q, k, transpose_b=True)  # (batch_size, num_heads, length, length)
+        logits += mask
         weights = tf.nn.softmax(logits)
-        attention_out = tf.matmul(weights, v)
+        attention_out = tf.matmul(weights, v)  # (batch_size, num_heads, length, dk)
 
-        attention_out = tf.transpose(attention_out, perm=(0, 2, 1, 3))
-        attention_out = tf.reshape(attention_out, shape=(batch_size, length, -1))
+        attention_out = tf.transpose(attention_out, perm=(0, 2, 1, 3))  # (batch_size, length, num_heads, dk)
+        attention_out = tf.reshape(attention_out, shape=(batch_size, length, -1))  # (batch_size, length, hidden_size)
 
-        output = tf.matmul(attention_out, self.Wout)
+        output = tf.matmul(attention_out, self.Wout)  # (batch_size, length, hidden_size)
 
         return output
 
@@ -68,5 +73,5 @@ class MultiHeadAttentionLayer(tl.layers.Layer):
 
 
 class SelfAttentionLayer(MultiHeadAttentionLayer):
-    def forward(self, x):
-        return super(SelfAttentionLayer, self).forward(x, x)
+    def forward(self, x, mask):
+        return super(SelfAttentionLayer, self).forward(x, x, mask)
