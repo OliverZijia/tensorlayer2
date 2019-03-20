@@ -42,24 +42,18 @@ class Dropout(Layer):
 
         logging.info("Dropout %s: keep: %f " % (self.name, self.keep))
 
-    '''
-    def build(self, inputs):
-        pass
-
-    def forward(self, inputs, is_train):
-        if is_train:
-            outputs = tf.nn.dropout(inputs, keep=self.keep, seed=self.seed, name=self.name)
-        else:
-            outputs = inputs
-        return outputs
-    '''
+    def __repr__(self):
+        s = ('{classname}(keep={keep}')
+        if self.name is not None:
+            s += ', name=\'{name}\''
+        s += ')'
+        return s.format(classname=self.__class__.__name__, **self.__dict__)
 
     def build(self, inputs_shape=None):
-        # return inputs_shape
         pass
 
+    @tf.function
     def forward(self, inputs):
-        # print(self.is_train)
         if self.is_train:
             outputs = tf.nn.dropout(inputs, rate=1 - (self.keep), seed=self.seed, name=self.name)
         else:

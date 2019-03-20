@@ -1,12 +1,7 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-import inspect
-import six
-
-from abc import ABCMeta, abstractmethod
-
-import numpy as np
+from abc import abstractmethod
 
 import tensorflow as tf
 import tensorlayer as tl
@@ -26,18 +21,6 @@ __all__ = [
 ]
 
 _global_layer_name_dict = {}  # TODO: better implementation?
-
-
-def _addindent(s_, numSpaces):
-    s = s_.split('\n')
-    # don't do anything for single-line stuff
-    if len(s) == 1:
-        return s_
-    first = s.pop(0)
-    s = [(numSpaces * ' ') + line for line in s]
-    s = '\n'.join(s)
-    s = first + '\n' + s
-    return s
 
 
 class Layer(object):
@@ -90,21 +73,6 @@ class Layer(object):
 
         self.name = name
 
-        # Layer input outputs
-        # TODO: note that in dynamic network, inputs and outputs can be both None, may cause problem, test needed
-        # FIXME : remove self.inputs & self.outputs in Layer Core, correct?
-        # self.inputs = None
-        # self.outputs = None
-        # self._inputs_shape_mem = None
-        # self._outputs_shape_mem = None
-
-        # self._inputs_shape = None
-        # self._outputs_shape = None
-
-        # FIXME : remove _input_layer, correct?
-        # TODO : need modification in ModelLayer, discussion needed @jingqing
-        # self._input_layer = None
-
         # Layer building state
         self._built = False
 
@@ -130,25 +98,6 @@ class Layer(object):
         #     self._add_graphs((self.name, self.graph))
         #     self.add_prev = True
 
-    # FIXME : remove self.inputs & self.outputs in Layer Core, correct?
-    # @property
-    # def _inputs_shape(self):
-    #     if self.inputs is not None:
-    #         if isinstance(self.inputs, list):
-    #             self._inputs_shape_mem = [t.get_shape().as_list() for t in self.inputs]
-    #         else:
-    #             self._inputs_shape_mem = self.inputs.get_shape().as_list()
-    #     return self._inputs_shape_mem
-    #
-    # @property
-    # def _outputs_shape(self):
-    #     if self.outputs is not None:
-    #         if isinstance(self.outputs, list):
-    #             self._outputs_shape_mem = [t.get_shape().as_list() for t in self.outputs]
-    #         else:
-    #             self._outputs_shape_mem = self.outputs.get_shape().as_list()
-    #     return self._outputs_shape_mem
-
     @staticmethod
     def _compute_shape(tensors):
         if isinstance(tensors, list):
@@ -161,7 +110,7 @@ class Layer(object):
     def weights(self):
         return self._weights
 
-    def __call__(self, inputs, **kwargs):
+    def __call__(self, inputs, *args, **kwargs):
         """
         (1) Build the Layer if necessary.
         (2) Forward the computation and return results.
@@ -173,101 +122,39 @@ class Layer(object):
         """
         if self.__class__.__name__ in tl.layers.inputs.__all__:
             input_tensors = tf.convert_to_tensor(inputs)
-            # self.inputs = tf.convert_to_tensor(inputs)
         else:
             input_tensors = inputs
-            # self.inputs = inputs
 
         if not self._built:
             if isinstance(self, LayerList):
                 self._input_tensors = input_tensors
             inputs_shape = self._compute_shape(input_tensors)
             self.build(inputs_shape)
-            # self.build(self._inputs_shape)
             self._built = True
 
-        outputs = self.forward(input_tensors, **kwargs)
+        outputs = self.forward(input_tensors, *args, **kwargs)
 
         if not self._nodes_fixed:
             self._add_node(input_tensors, outputs)
         return outputs
 
     def _add_node(self, input_tensors, output_tensors):
-        inputs_list = input_tensors if isinstance(input_tensors, list) else [input_tensors]
-        outputs_list = output_tensors if isinstance(output_tensors, list) else [output_tensors]
+        inputs_list = tolist(input_tensors) # input_tensors if isinstance(input_tensors, list) else [input_tensors]
+        outputs_list = tolist(output_tensors) # output_tensors if isinstance(output_tensors, list) else [output_tensors]
 
         if self.__class__.__name__ in tl.layers.inputs.__all__:
             # for InputLayer, there should be no in_nodes
             in_nodes = []
+            in_tensor_idxes = [0]
         else:
             in_nodes = [tensor._info[0] for tensor in inputs_list]
+            in_tensor_idxes = [tensor._info[1] for tensor in inputs_list]
         node_index = len(self._nodes)
 
-        new_node = LayerNode(self, node_index, in_nodes, inputs_list, outputs_list)
+        new_node = LayerNode(self, node_index, in_nodes, inputs_list, outputs_list, in_tensor_idxes)
         self._nodes.append(new_node)
         for idx, tensor in enumerate(outputs_list):
-            tensor._info = (new_node, idx)
-
-    # def __call__(self, prev_layer, **kwargs):
-    #     """
-    #     (1) Build the Layer if necessary.
-    #     (2) Forward the computation and return results.
-    #
-    #     :param prev_layer: np.ndarray, Tensor, Layer, list of Layers
-    #     :param kwargs:
-    #     :return: Layer
-    #     """
-    #
-    #     if self.__class__.__name__ in tl.layers.inputs.__all__:
-    #         # 1. for input layers
-    #         # Input layers should use tf.convert_to_tensor to make sure the inputs is converted into tf.Tensor
-    #
-    #         self.inputs = tf.convert_to_tensor(prev_layer)
-    #         self._input_layer = None
-    #         self._built = True
-    #         self.build(self._inputs_shape)
-    #         self.outputs = self.forward(self.inputs, **kwargs)
-    #
-    #     elif isinstance(prev_layer, Layer):
-    #         # 2. for normal layer have only one input i.e. Dense
-    #         # Hint : list(), dict() is pass by value (shallow), without them,
-    #         # it is pass by reference.
-    #
-    #         self.inputs = prev_layer.outputs
-    #         self._input_layer = prev_layer
-    #         if self.add_prev == False:
-    #             self.graph.update({'prev_layer': prev_layer.name})
-    #             self._add_graphs(prev_layer.all_graphs)
-    #             self._add_graphs((self.name, self.graph))
-    #             self.add_prev = True
-    #
-    #         self.outputs = self.forward(self.inputs, **kwargs)
-    #
-    #     elif isinstance(prev_layer, list):
-    #         # 3. for layer have multiply inputs i.e. Concat
-    #
-    #         self.inputs = [layer.outputs for layer in prev_layer]
-    #         self._input_layer = prev_layer # FIXME: not sure how to deal with it
-    #
-    #         # FIXME: only support concat/elementwise, where build does nothing
-    #         if not self._built:
-    #             self._built = True
-    #
-    #         if self.add_prev == False:
-    #             _list = []
-    #             for layer in prev_layer:
-    #                 _list.append(layer.name)
-    #             self.graph.update({'prev_layer': _list})
-    #             self._add_graphs(sum([l.all_graphs for l in prev_layer], []))
-    #             self._add_graphs((self.name, self.graph))
-    #             self.add_prev = True
-    #
-    #         self.outputs = self.forward(self.inputs, **kwargs)
-    #
-    #     else:
-    #         raise AssertionError("Invalid input type: %s" % type(prev_layer))
-    #
-    #     return self
+            tensor._info = (new_node, idx) # FIXME : modify tensor outside layers? how to deal?
 
     def _release_memory(self):
         """
@@ -275,14 +162,10 @@ class Layer(object):
 
         self.inputs and self.outputs will be set as None but not deleted in order to release memory.
         """
-
-
-        # FIXME : not sure whether to remove this and how to release_memory now.
-        # FIXME : Set LayerNode's input/output_tensor = None?
-        # _ = self._inputs_shape # save input shape before inputs become None
-        # _ = self._outputs_shape # save outputs shape before outputs become None
-        # self.inputs = None
-        # self.outputs = None
+        # FIXME : not understand why saving inputs/outputs shape
+        for node in self._nodes:
+            node.in_tensors = None
+            node.out_tensors = None
 
     def _set_mode_for_layers(self, is_train):
         """ Set training/evaluation mode for the Layer"""
@@ -382,7 +265,7 @@ class Layer(object):
     #     return args if args is not None else {}
 
 class LayerNode(object):
-    def __init__(self, layer, node_index, in_nodes, in_tensors, out_tensors):
+    def __init__(self, layer, node_index, in_nodes, in_tensors, out_tensors, in_tensor_idxes):
         self.layer = layer
         self.node_index = node_index
         self.in_nodes = in_nodes
@@ -391,14 +274,13 @@ class LayerNode(object):
         self.out_tensors = out_tensors
         self.name = layer.name + "_node_{}".format(node_index)
 
-        # for node in self.in_nodes:
-        #     node.out_nodes.append(self)
+        self.in_tensors_idxes = in_tensor_idxes
 
     def __call__(self, inputs, **kwargs):
         outputs = self.layer.forward(inputs, **kwargs)
-        self.in_tensors = inputs if isinstance(inputs, list) else [inputs]
-        self.out_tensors = outputs if isinstance(outputs, list) else [outputs]
-        return outputs
+        self.in_tensors = tolist(inputs) # inputs if isinstance(inputs, list) else [inputs]
+        self.out_tensors = tolist(outputs) # outputs if isinstance(outputs, list) else [outputs]
+        return self.out_tensors
 
 
 class ModelLayer(Layer):
@@ -439,14 +321,14 @@ class ModelLayer(Layer):
         self.model = model
 
         # Layer input outputs
-        if isinstance(model.inputs, list):
-            self.inputs = [t.outputs for t in model.inputs]
-        else:
-            self.inputs = model.inputs.outputs
+        # if isinstance(model.inputs, list):
+        #     self.inputs = [t.outputs for t in model.inputs]
+        # else:
+        #     self.inputs = model.inputs.outputs
+        #
+        # self.outputs = model.forward(self.inputs)
 
-        self.outputs = model.forward(self.inputs)
-
-        self._input_layer = model.inputs
+        # self._input_layer = model.inputs
 
         # Layer building state
         self._built = True
@@ -615,3 +497,23 @@ class LayerList(Layer):
         for layer in self.layers:
             layer._release_memory()
 
+
+def _addindent(s_, numSpaces):
+    s = s_.split('\n')
+    # don't do anything for single-line stuff
+    if len(s) == 1:
+        return s_
+    first = s.pop(0)
+    s = [(numSpaces * ' ') + line for line in s]
+    s = '\n'.join(s)
+    s = first + '\n' + s
+    return s
+
+
+def tolist(tensors):
+    if isinstance(tensors, list):
+        return tensors
+    elif isinstance(tensors, tuple):
+        return list(tensors)
+    else:
+        return [tensors]

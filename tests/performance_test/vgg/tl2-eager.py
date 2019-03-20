@@ -1,15 +1,15 @@
-import torch
-import torch.nn.functional as F
-import torch.optim as optim
-from torchvision.models import vgg16
 import time
 import os
 import psutil
 import numpy as np
+import tensorflow as tf
+import tensorlayer as tl
 from exp_config import random_input_generator, MONITOR_INTERVAL, NUM_ITERS, BATCH_SIZE, LERANING_RATE
 
-# set gpu_id 0
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+tl.logging.set_verbosity(tl.logging.DEBUG)
+
+# get the whole model
+vgg = tl.models.vgg16()
 
 # system monitor
 info = psutil.virtual_memory()
@@ -19,38 +19,40 @@ max_mem_usage = 0
 count = 0
 total_time = 0
 
-# get the whole model
-vgg = vgg16()
-
-start_time = time.time()
-vgg = vgg.to(device)
-total_time += time.time() - start_time
-
 # training setting
 num_iter = NUM_ITERS
 batch_size = BATCH_SIZE
-optimizer = optim.Adam(vgg.parameters(), lr=LERANING_RATE)
+train_weights = vgg.weights
+optimizer = tf.keras.optimizers.Adam(lr=LERANING_RATE)
+loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
 # data generator
-gen = random_input_generator(num_iter, batch_size, format='NCHW')
+gen = random_input_generator(num_iter, batch_size)
+
+
+# training function
+def train_step(x_batch, y_batch):
+    # forward + backward
+    with tf.GradientTape() as tape:
+        ## compute outputs
+        _logits = vgg(x_batch)
+        ## compute loss and update model
+        _loss = loss_object(y_batch, _logits)
+
+    grad = tape.gradient(_loss, train_weights)
+    optimizer.apply_gradients(zip(grad, train_weights))
+
 
 # begin training
+vgg.train()
 
 for idx, data in enumerate(gen):
-    x_batch = torch.Tensor(data[0])
-    y_batch = torch.Tensor(data[1]).long()
+    x_batch = data[0]
+    y_batch = data[1]
 
     start_time = time.time()
 
-    x_batch = x_batch.to(device)
-    y_batch = y_batch.to(device)
-
-    # forward + backward
-    outputs = vgg(x_batch)
-    loss = F.cross_entropy(outputs, y_batch)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+    train_step(x_batch, y_batch)
 
     end_time = time.time()
     consume_time = end_time - start_time
@@ -61,7 +63,7 @@ for idx, data in enumerate(gen):
         max_mem_usage = max(cur_usage, max_mem_usage)
         avg_mem_usage += cur_usage
         count += 1
-        print("[*] {} iteration: memory usage {:.2f}MB, consume time {:.4f}s".format(
+        tl.logging.info("[*] {} iteration: memory usage {:.2f}MB, consume time {:.4f}s".format(
             idx, cur_usage / (1024 * 1024), consume_time))
 
 print('consumed time:', total_time)
