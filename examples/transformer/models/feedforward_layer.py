@@ -23,13 +23,24 @@ class FeedForwardLayer(tl.layers.Layer):
         self.ff_size = ff_size
         self.keep_prob = keep_prob
 
+        self._nodes_fixed = True
+        if not self._built:
+            self.build(tuple())
+            self._built = True
+
     def build(self, inputs_shape):
-        self.dense1 = tl.layers.Dense(self.ff_size)
-        self.dense2 = tl.layers.Dense(self.hidden_size)
-        self.dropout = tl.layers.Dropout(self.keep_prob)
+        # self.dense1 = tl.layers.Dense(self.ff_size)
+        # self.dense2 = tl.layers.Dense(self.hidden_size)
+        # self.dropout = tl.layers.Dropout(self.keep_prob)
+        self.W1 = self._get_weights('W1', (self.hidden_size, self.ff_size))
+        self.W2 = self._get_weights('W2', (self.ff_size, self.hidden_size))
 
     def forward(self, inputs):
-        return self.dense2(self.dropout(tf.nn.relu(self.dense1(inputs))))
+        # print(inputs.shape)
+        # return self.dense2(self.dropout(tf.nn.relu(self.dense1(inputs))))
+        out = tf.tensordot(inputs, self.W1, axes=[[2], [0]])
+        out = tf.tensordot(out, self.W2, axes=[[2], [0]])
+        return out
 
     def __repr__(self):
         pass

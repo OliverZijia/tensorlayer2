@@ -16,11 +16,16 @@ class EmbeddingLayer(tl.layers.Layer):
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
 
+        self._nodes_fixed = True
+        if not self._built:
+            self.build(tuple())
+            self._built = True
+
     def __repr__(self):
         pass
 
     def build(self, inputs_shape):
-        self.W = self._get_weights('weights', shape=(self.vocab_size, self.hidden_size), )
+        self.W = self._get_weights('weights', shape=(self.vocab_size, self.hidden_size))
 
     def forward(self, inputs):
         # inputs is of size (batch_size, length)

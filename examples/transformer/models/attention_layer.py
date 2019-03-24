@@ -18,8 +18,13 @@ class MultiHeadAttentionLayer(tl.layers.Layer):
         self.num_heads = num_heads
         self.hidden_size = hidden_size
         assert hidden_size % num_heads == 0
-        self.dk = hidden_size / num_heads
+        self.dk = hidden_size // num_heads
         self.keep_prob = keep_prob
+
+        self._nodes_fixed = True
+        if not self._built:
+            self.build(tuple())
+            self._built = True
 
     def build(self, inputs_shape):
         self.Wq = self._get_weights("W_q", shape=(self.hidden_size, self.hidden_size))
@@ -44,9 +49,9 @@ class MultiHeadAttentionLayer(tl.layers.Layer):
         -------
             shape=(batch_size, length, hidden_size)
         """
-        q = tf.matmul(x, self.Wq)  # (batch_size, length, hidden_size)
-        k = tf.matmul(y, self.Wk)  # (batch_size, length, hidden_size)
-        v = tf.matmul(y, self.Wv)  # (batch_size, length, hidden_size)
+        q = tf.tensordot(x, self.Wq, axes=[[2], [0]])  # (batch_size, length, hidden_size)
+        k = tf.tensordot(y, self.Wk, axes=[[2], [0]])  # (batch_size, length, hidden_size)
+        v = tf.tensordot(y, self.Wv, axes=[[2], [0]])  # (batch_size, length, hidden_size)
 
         # split heads
         batch_size, length, hidden_size = tf.shape(x)
@@ -54,7 +59,7 @@ class MultiHeadAttentionLayer(tl.layers.Layer):
             lambda _: tf.transpose(tf.reshape(_, (batch_size, length, self.num_heads, self.dk)), perm=(0, 2, 1, 3)),
             [q, k, v])  # (batch_size, num_heads, length, dk)
 
-        q *= tf.rsqrt(self.dk)
+        q *= tf.math.rsqrt(tf.cast(self.dk, dtype=tf.float32))
 
         logits = tf.matmul(q, k, transpose_b=True)  # (batch_size, num_heads, length, length)
         logits += mask
@@ -64,7 +69,7 @@ class MultiHeadAttentionLayer(tl.layers.Layer):
         attention_out = tf.transpose(attention_out, perm=(0, 2, 1, 3))  # (batch_size, length, num_heads, dk)
         attention_out = tf.reshape(attention_out, shape=(batch_size, length, -1))  # (batch_size, length, hidden_size)
 
-        output = tf.matmul(attention_out, self.Wout)  # (batch_size, length, hidden_size)
+        output = tf.tensordot(attention_out, self.Wout, axes=[[2], [0]])  # (batch_size, length, hidden_size)
 
         return output
 

@@ -36,36 +36,45 @@ def get_dataset():
     return dataset
 
 
-def train_model():
+class myModel(tl.models.Model):
+    def __init__(self, params):
+        super(myModel, self).__init__()
+        self.transformer = Transformer(params)
 
-    #@tf.function
+    def forward(self, inputs, targets):
+        return self.transformer(inputs=inputs, targets=targets)
+
+
+def train_model():
+    # @tf.function
     def train_step(inputs, targets):
+        model.train()
         with tf.GradientTape() as tape:
-            print(inputs)
-            inputs = input_layer(inputs)
-            targets = target_layer(targets)
-            predictions = transformer(inputs=inputs, targets=targets)
-            loss = loss_object(targets, predictions, from_logits=True)
+            #print(inputs)
+            predictions = model(inputs=inputs, targets=targets)
+            loss = loss_object(targets, predictions)
+
+        #print(model.transformer.weights)
         print(loss)
-        gradients = tape.gradient(loss, transformer.weights)
-        optimizer.apply_gradients(zip(gradients, transformer.weights))
+        gradients = tape.gradient(loss, model.transformer.weights)
+        optimizer.apply_gradients(zip(gradients, model.transformer.weights))
+
     #     #
     #     # train_loss(loss)
     #     # train_accuracy(label, predictions)
 
     params = model_params.EXAMPLE_PARAMS
-    transformer = Transformer(params)
+    model = myModel(params)
 
-    input_layer = tl.layers.Input([None, None], dtype=tf.int32)
-    target_layer = tl.layers.Input([None, None], dtype=tf.int32)
     # predictions = transformer(inputs, targets)
 
-    loss_object = tf.losses.sparse_categorical_crossentropy
+    #loss_object = tf.losses.sparse_categorical_crossentropy
+    loss_object = tf.losses.SparseCategoricalCrossentropy()
     # loss = loss_object(targets, predictions, from_logits=True)
 
     # model = tl.models.Model(inputs=[inputs, targets], outputs=[predictions, loss], name='transformer_model')
 
-    optimizer = tf.optimizers.Adam()
+    optimizer = tf.optimizers.Adam(learning_rate=0.001)
 
     dataset = get_dataset()
     dataset = dataset.repeat(5)
@@ -112,6 +121,6 @@ def test_dataset():
 
 if __name__ == '__main__':
     # tf.logging.set_verbosity(tf.logging.INFO)
-    #test_dataset()
+    # test_dataset()
     # wmt_dataset.download_and_preprocess_dataset('data/raw', 'data', search=False)
     train_model()
