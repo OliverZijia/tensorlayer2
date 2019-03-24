@@ -36,7 +36,7 @@ def get_target_mask(length):
         shape=(1, 1, length, length)
     """
     # upper triangle
-    mask = tf.matrix_band_part(tf.ones((length, length)), -1, 0)
+    mask = tf.linalg.band_part(tf.ones((length, length)), -1, 0)
     # lower triangle without diagonal
     mask = 1 - mask
     mask = tf.reshape(mask, (1, 1, length, length))
@@ -58,11 +58,16 @@ def positional_encoding(length, hidden_size):
     pe:
         shape=(1, length, hidden_size)
     """
-    pe = tf.zeros((length, hidden_size))
-    position = tf.expand_dims(tf.range(length), axis=1)
-    div_term = tf.exp(-1 * tf.range(0, hidden_size, 2) * (tf.log(10000) / hidden_size))
-    pe[:, 0::2] = tf.sin(position * div_term)
-    pe[:, 1::2] = tf.cos(position * div_term)
+    #pe = tf.zeros((length, hidden_size))
+    position = tf.cast(tf.expand_dims(tf.range(length), axis=1), dtype=tf.float32)
+    #div_term = tf.exp(-1 * tf.cast(tf.range(0, hidden_size, 2), dtype=tf.float32) * (tf.math.log(10000) / hidden_size))
+    div_term = -1 * tf.range(0, hidden_size, 2, dtype=tf.float32)
+    div_term = div_term * tf.math.log(10000.0)
+    div_term = div_term / hidden_size
+    div_term = tf.exp(div_term)
+
+    # pe[:, 0::2] = tf.sin(position * div_term)
+    pe = tf.concat([tf.sin(position * div_term), tf.cos(position * div_term)], axis=1)
     pe = tf.expand_dims(pe, axis=0)
     return pe
 

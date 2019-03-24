@@ -20,14 +20,14 @@ class EmbeddingLayer(tl.layers.Layer):
         pass
 
     def build(self, inputs_shape):
-        self.W = self._get_weights('weights', shape=(self.vocab_size, self.hidden_size))
+        self.W = self._get_weights('weights', shape=(self.vocab_size, self.hidden_size), )
 
     def forward(self, inputs):
         # inputs is of size (batch_size, length)
         # create mask for inputs, 0 is <pad> in dictionary
-        mask = tf.to_float(tf.not_equal(inputs, 0))
+        mask = tf.cast(tf.not_equal(inputs, 0), dtype=tf.float32)
 
         embeddings = tf.gather(self.W, inputs)
-        embeddings *= mask
+        embeddings *= tf.expand_dims(mask, 2)
 
         return embeddings

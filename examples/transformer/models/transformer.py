@@ -45,7 +45,7 @@ class Transformer(tl.layers.Layer):
         self.decoder_stack = DecoderStack(self.params)
         self.dropout = tl.layers.Dropout(self.params.keep_prob)
 
-    def forward(self, inputs, targets):
+    def forward(self, inputs, targets=None):
         length = tf.shape(inputs)[1]
         input_mask = get_input_mask(inputs)
         target_mask = get_target_mask(length)
@@ -57,6 +57,8 @@ class Transformer(tl.layers.Layer):
         inputs += positional_encoding(length, self.params.hidden_size)
         targets += positional_encoding(length, self.params.hidden_size)
 
+        # print(inputs)
+        # print(targets)
         inputs = self.dropout(inputs)
         targets = self.dropout(targets)
 
