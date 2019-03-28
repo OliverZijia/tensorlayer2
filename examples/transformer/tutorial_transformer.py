@@ -56,15 +56,18 @@ def train_model():
 
         #print(model.transformer.weights)
         print(loss)
-        gradients = tape.gradient(loss, model.transformer.weights)
-        optimizer.apply_gradients(zip(gradients, model.transformer.weights))
+        gradients = tape.gradient(loss, model.weights)
+        optimizer.apply_gradients(zip(gradients, model.weights))
 
     #     #
     #     # train_loss(loss)
     #     # train_accuracy(label, predictions)
 
     params = model_params.EXAMPLE_PARAMS
-    model = myModel(params)
+    #model = myModel(params)
+    model = Transformer(params)
+    #a = model.all_layers
+    #print(a)
 
     # predictions = transformer(inputs, targets)
 
