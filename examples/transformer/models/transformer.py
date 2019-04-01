@@ -177,10 +177,8 @@ class LayerNormalization(tl.layers.Layer):
         self.hidden_size = hidden_size
         self.epsilon = epsilon
 
-        self._nodes_fixed = True
-        if not self._built:
-            self.build(tuple())
-            self._built = True
+        self.build(tuple())
+        self._built = True
 
     def build(self, inputs_shape):
         self.scale = self._get_weights('scale', shape=(self.hidden_size), init=tl.initializers.Ones())
@@ -193,29 +191,53 @@ class LayerNormalization(tl.layers.Layer):
         return norm_inputs * self.scale + self.bias
 
     def __repr__(self):
-        pass
+        return "layer normalization"
 
 
-class SublayerWrapper(object):
+# class SublayerWrapper(object):
+#     """
+#     wrapper for sublayer(attention, feedforward)
+#     contains no parameters, so is not a tl layer
+#     """
+#
+#     def __init__(self, layer, params):
+#         self.layer = layer
+#         self.layer_norm = LayerNormalization(params.hidden_size)
+#         self.dropout = tl.layers.Dropout(keep=params.keep_prob)
+#
+#         self.dropout._nodes_fixed = True
+#
+#         self.weights = []
+#         self.weights.extend(self.layer.weights)
+#         self.weights.extend(self.layer_norm.weights)
+#
+#     def __call__(self, inputs, *args, **kwargs):
+#         outputs = self.dropout(self.layer(inputs, *args, **kwargs))
+#         # outputs = self.layer(inputs, *args, **kwargs)
+#         # residual connection
+#         return self.layer_norm(inputs + outputs)
+#
+#     def __repr__(self):
+#         return "sublayer"
+
+
+class SublayerWrapper(tl.models.Model):
     """
     wrapper for sublayer(attention, feedforward)
     contains no parameters, so is not a tl layer
     """
 
     def __init__(self, layer, params):
+        super(SublayerWrapper, self).__init__()
+        self.params = params
+
         self.layer = layer
         self.layer_norm = LayerNormalization(params.hidden_size)
-        self.dropout = tl.layers.Dropout(keep=params.keep_prob)
 
-        self.dropout._nodes_fixed = True
-
-        self.weights = []
-        self.weights.extend(self.layer.weights)
-        self.weights.extend(self.layer_norm.weights)
-
-    def __call__(self, inputs, *args, **kwargs):
-        outputs = self.dropout(self.layer(inputs, *args, **kwargs))
-        # outputs = self.layer(inputs, *args, **kwargs)
+    def forward(self, inputs, *args, **kwargs):
+        outputs = self.layer(inputs, *args, **kwargs)
+        if self.is_train:
+            outputs = tf.nn.dropout(outputs, rate=1 - self.params.keep_prob)
         # residual connection
         return self.layer_norm(inputs + outputs)
 
@@ -232,14 +254,12 @@ class SublayerWrapper(object):
 #
 #     """
 #
-#     def __init__(self, params):
+#     def __init__(self, params, name):
 #         super(EncoderStack, self).__init__()
 #         self.params = params
 #
-#         self._nodes_fixed = True
-#         if not self._built:
-#             self.build(tuple())
-#             self._built = True
+#         self.build(tuple())
+#         self._built = True
 #
 #     def __repr__(self):
 #         return "encoder stack"
@@ -256,12 +276,12 @@ class SublayerWrapper(object):
 #                                      self.params.keep_prob), self.params)])
 #         self.layer_norm = LayerNormalization(self.params.hidden_size)
 #
-#         if self._weights is None:
-#             self._weights = list()
-#         for _ in range(self.params.encoder_num_layers):
-#             self._weights.extend(self.sublayers[_][0].weights)
-#             self._weights.extend(self.sublayers[_][1].weights)
-#         self._weights.extend(self.layer_norm.weights)
+#         # if self._weights is None:
+#         #     self._weights = list()
+#         # for _ in range(self.params.encoder_num_layers):
+#         #     self._weights.extend(self.sublayers[_][0].weights)
+#         #     self._weights.extend(self.sublayers[_][1].weights)
+#         # self._weights.extend(self.layer_norm.weights)
 #
 #     def forward(self, inputs, input_mask):
 #         """
@@ -299,12 +319,11 @@ class EncoderStack(tl.models.Model):
         self.sublayers = []
         for _ in range(params.encoder_num_layers):
             self.sublayers.append([
-                SublayerWrapper(
-                    SelfAttentionLayer(params.num_heads, params.hidden_size,
-                                       params.keep_prob), params),
-                SublayerWrapper(
-                    FeedForwardLayer(params.hidden_size, params.ff_size,
-                                     params.keep_prob), params)])
+                SublayerWrapper(SelfAttentionLayer(params.num_heads, params.hidden_size, params.keep_prob),
+                                params),
+                SublayerWrapper(FeedForwardLayer(params.hidden_size, params.ff_size, params.keep_prob),
+                                params)])
+
         self.layer_norm = LayerNormalization(params.hidden_size)
 
     def forward(self, inputs, input_mask):
@@ -321,13 +340,13 @@ class EncoderStack(tl.models.Model):
             encoded features, shape=(batch_size, length, hidden_size)
         """
         for sublayer in self.sublayers:
-            inputs = sublayer[0](inputs, input_mask)
+            inputs = sublayer[0](inputs=inputs, mask=input_mask)
             inputs = sublayer[1](inputs)
         inputs = self.layer_norm(inputs)
         return inputs
 
 
-class DecoderStack(tl.layers.Layer):
+class DecoderStack(tl.models.Model):
     """
     Decoder stack
     Decoder is made of self-attn, src-attn, and feed forward
@@ -343,12 +362,6 @@ class DecoderStack(tl.layers.Layer):
         super(DecoderStack, self).__init__()
         self.params = params
 
-        self._nodes_fixed = True
-        if not self._built:
-            self.build(tuple())
-            self._built = True
-
-    def build(self, inputs_shape):
         self.sublayers = []
         for _ in range(self.params.decoder_num_layers):
             self.sublayers.append([
@@ -363,21 +376,65 @@ class DecoderStack(tl.layers.Layer):
                                      self.params.keep_prob), self.params)])
         self.layer_norm = LayerNormalization(self.params.hidden_size)
 
-        if self._weights is None:
-            self._weights = list()
-        for _ in range(self.params.decoder_num_layers):
-            self._weights.extend(self.sublayers[_][0].weights)
-            self._weights.extend(self.sublayers[_][1].weights)
-            self._weights.extend(self.sublayers[_][2].weights)
-        self._weights.extend(self.layer_norm.weights)
-
     def forward(self, inputs, features, input_mask, target_mask):
         for sublayer in self.sublayers:
-            inputs = sublayer[0](inputs, target_mask)
-            inputs = sublayer[1](inputs, features, input_mask)
+            inputs = sublayer[0](inputs, mask=target_mask)
+            inputs = sublayer[1](inputs, y=features, mask=input_mask)
             inputs = sublayer[2](inputs)
         inputs = self.layer_norm(inputs)
         return inputs
 
-    def __repr__(self):
-        return "decoder stack"
+# class DecoderStack(tl.layers.Layer):
+#     """
+#     Decoder stack
+#     Decoder is made of self-attn, src-attn, and feed forward
+#
+#     Parameters
+#     ----------
+#     params: a parameter object
+#         refer to ../transformer/utils/model_params for details
+#
+#     """
+#
+#     def __init__(self, params):
+#         super(DecoderStack, self).__init__()
+#         self.params = params
+#
+#         self._nodes_fixed = True
+#         if not self._built:
+#             self.build(tuple())
+#             self._built = True
+#
+#     def build(self, inputs_shape):
+#         self.sublayers = []
+#         for _ in range(self.params.decoder_num_layers):
+#             self.sublayers.append([
+#                 SublayerWrapper(
+#                     SelfAttentionLayer(self.params.num_heads, self.params.hidden_size,
+#                                        self.params.keep_prob), self.params),
+#                 SublayerWrapper(
+#                     MultiHeadAttentionLayer(self.params.num_heads, self.params.hidden_size,
+#                                             self.params.keep_prob), self.params),
+#                 SublayerWrapper(
+#                     FeedForwardLayer(self.params.hidden_size, self.params.ff_size,
+#                                      self.params.keep_prob), self.params)])
+#         self.layer_norm = LayerNormalization(self.params.hidden_size)
+#
+#         if self._weights is None:
+#             self._weights = list()
+#         for _ in range(self.params.decoder_num_layers):
+#             self._weights.extend(self.sublayers[_][0].weights)
+#             self._weights.extend(self.sublayers[_][1].weights)
+#             self._weights.extend(self.sublayers[_][2].weights)
+#         self._weights.extend(self.layer_norm.weights)
+#
+#     def forward(self, inputs, features, input_mask, target_mask):
+#         for sublayer in self.sublayers:
+#             inputs = sublayer[0](inputs, target_mask)
+#             inputs = sublayer[1](inputs, features, input_mask)
+#             inputs = sublayer[2](inputs)
+#         inputs = self.layer_norm(inputs)
+#         return inputs
+#
+#     def __repr__(self):
+#         return "decoder stack"

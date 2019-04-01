@@ -43,4 +43,4 @@ class FeedForwardLayer(tl.layers.Layer):
         return out
 
     def __repr__(self):
-        pass
+        return "feedforward layer"

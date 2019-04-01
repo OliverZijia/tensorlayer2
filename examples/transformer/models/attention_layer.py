@@ -21,10 +21,8 @@ class MultiHeadAttentionLayer(tl.layers.Layer):
         self.dk = hidden_size // num_heads
         self.keep_prob = keep_prob
 
-        self._nodes_fixed = True
-        if not self._built:
-            self.build(tuple())
-            self._built = True
+        self.build(tuple())
+        self._built = True
 
     def build(self, inputs_shape):
         self.Wq = self._get_weights("W_q", shape=(self.hidden_size, self.hidden_size))
@@ -74,9 +72,12 @@ class MultiHeadAttentionLayer(tl.layers.Layer):
         return output
 
     def __repr__(self):
-        pass
+        return "attention layer"
 
 
 class SelfAttentionLayer(MultiHeadAttentionLayer):
     def forward(self, x, mask):
         return super(SelfAttentionLayer, self).forward(x, x, mask)
+
+    def __repr__(self):
+        return "self attention layer"

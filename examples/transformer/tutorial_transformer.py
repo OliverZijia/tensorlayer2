@@ -66,8 +66,10 @@ def train_model():
     params = model_params.EXAMPLE_PARAMS
     #model = myModel(params)
     model = Transformer(params)
-    #a = model.all_layers
-    #print(a)
+    a = model.all_layers
+    # print(model.encoder_stack.weights)
+    print(model.name)
+    print(model.all_layers)
 
     # predictions = transformer(inputs, targets)
 

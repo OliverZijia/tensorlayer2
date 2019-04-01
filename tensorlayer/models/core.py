@@ -11,6 +11,7 @@ __all__ = [
     'Model',
 ]
 
+_global_model_name_dict = {}
 
 class Model():
     """The :class:`Model` class represents a neural network.
@@ -132,6 +133,21 @@ class Model():
         name : str or None
             Name for this network
         """
+
+        global _global_model_name_dict
+        if name is None:
+            prefix = self.__class__.__name__.lower()
+            if _global_model_name_dict.get(prefix) is not None:
+                _global_model_name_dict[prefix] += 1
+                name = prefix + '_' + str(_global_model_name_dict[prefix])
+            else:
+                _global_model_name_dict[prefix] = 0
+                name = prefix
+        else:
+            if _global_model_name_dict.get(name) is not None:
+                raise ValueError(
+                    'Model name \'%s\' has already been used by another model. Please change the model name.' % name)
+
         # Model properties
         # TODO: model auto naming
         self.name = name
@@ -317,6 +333,12 @@ class Model():
                     elif isinstance(getattr(self, attr), Model):
                         nowmodel = getattr(self, attr)
                         self._all_layers.append(nowmodel)
+
+                    #
+                    elif isinstance(getattr(self, attr), list):
+                        self._all_layers.extend(_add_list_to_all_layers(getattr(self, attr)))
+                    #
+
                 except Exception:
                     pass
             return self._all_layers
@@ -431,6 +453,9 @@ class Model():
             if is_train == self.is_train:
                 logging.warning("Training / inference mode redefined redundantly. Please EITHER use the argument `is_train` OR `Model.train()` / `Model.eval()` to define the mode.")
             else:
+                print(is_train)
+                print(self.is_train)
+                print(self.name)
                 raise AttributeError("Training / inference mode mismatch. The argument `is_train` is set as %s, " % is_train +
                                      "but the mode is currently set as %s. " % ('Training by Model.train()' if self.is_train else 'Inference by Model.eval()') +
                                      "Please EITHER use the argument `is_train` OR `Model.train()` / `Model.eval()` to define the mode.")
@@ -448,6 +473,8 @@ class Model():
 
         """
         for layer in self.all_layers:
+            if isinstance(layer, Model):
+                layer.is_train = is_train
             layer._set_mode_for_layers(is_train)
 
     def _fix_nodes_for_layers(self):
@@ -746,3 +773,18 @@ def _check_tl_layer_tensors(tensors):
                 return False
         return True
 
+
+def _add_list_to_all_layers(list_member):
+    temp_all_layers = list()
+    for component in list_member:
+        if isinstance(component, Layer):
+            temp_all_layers.append(component)
+            if not component._built:
+                raise AttributeError(
+                    "Layer %s not built yet." % repr(component)
+                )
+        elif isinstance(component, Model):
+            temp_all_layers.append(component)
+        elif isinstance(component, list):
+            temp_all_layers.extend(_add_list_to_all_layers(component))
+    return temp_all_layers
